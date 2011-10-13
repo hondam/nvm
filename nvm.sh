@@ -41,6 +41,19 @@ nvm_version()
     if [[ "$PATTERN" == v?*.?*.?* ]]; then
         VERSION="$PATTERN"
     fi
+    # Add nave version pattern
+    if [[ "$PATTERN" == "stable" ]]; then
+        VERSION='v'`curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[2468]\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | tail -n1`
+    fi
+    if [[ "$PATTERN" == "latest" ]]; then
+        VERSION='v'`curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[0-9]+\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | tail -n1`
+    fi
     # The default version is the current one
     if [ ! "$PATTERN" -o "$PATTERN" = 'current' ]; then
         VERSION=`node -v 2>/dev/null`
