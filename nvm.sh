@@ -1,9 +1,4 @@
-# Node Version Manager
-# Implemented as a bash function
-# To use source this file from your bash profile
-#
-# Implemented by Tim Caswell <tim@creationix.com>
-# with much bash help from Matthew Ranney
+# Node Version Manager for Node Ninja
 
 # Auto detect the NVM_DIR
 if [ ! -d "$NVM_DIR" ]; then
@@ -28,6 +23,37 @@ if [ ! `which curl` ]; then
     fi
 fi
 
+nvm_remote()
+{
+    PATTERN=$1
+    if [[ "$PATTERN" == "all" ]]; then
+        curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[0-9]\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | vformat
+    fi
+    if [[ "$PATTERN" == "stable" ]]; then
+        curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[2468]\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | vformat
+    fi 
+    if [[ "$PATTERN" == "unstable" ]]; then
+        curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[13579]\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | vformat
+    fi
+}
+
+vformat()
+{
+  local v
+  while read v; do
+    echo "v"$v
+  done
+}
+
 # Expand a version using the version cache
 nvm_version()
 {
@@ -45,6 +71,12 @@ nvm_version()
     if [[ "$PATTERN" == "stable" ]]; then
         VERSION='v'`curl -s http://nodejs.org/dist/ \
         | egrep -o '[0-9]+\.[2468]\.[0-9]+' \
+        | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
+        | tail -n1`
+    fi
+    if [[ "$PATTERN" == "unstable" ]]; then
+        VERSION='v'`curl -s http://nodejs.org/dist/ \
+        | egrep -o '[0-9]+\.[13579]\.[0-9]+' \
         | sort -u -k 1,1n -k 2,2n -k 3,3n -t . \
         | tail -n1`
     fi
@@ -84,7 +116,7 @@ nvm()
   case $1 in
     "help" )
       echo
-      echo "Node Version Manager"
+      echo "Node Version Manager for Node Ninja"
       echo
       echo "Usage:"
       echo "    nvm help                    Show this message"
@@ -93,11 +125,17 @@ nvm()
       echo "    nvm use <version>           Modify PATH to use <version>"
       echo "    nvm ls                      List installed versions"
       echo "    nvm ls <version>            List versions matching a given description"
+      echo "    nvm remote                  List remote all node versions"
+      echo "    nvm remote <version>        List remote <version> node versions"
       echo "    nvm deactivate              Undo effects of NVM on current shell"
       echo "    nvm alias [<pattern>]       Show all aliases beginning with <pattern>"
       echo "    nvm alias <name> <version>  Set an alias named <name> pointing to <version>"
       echo "    nvm unalias <name>          Deletes the alias named <name>"
       echo "    nvm copy-packages <version> Install global NPM packages contained in <version> to current version"
+      echo
+      echo "    <version> can be the string "latest" to get the letest distribution."
+      echo "    <version> can be the string "stable" to get stable version."
+      echo "    <version> can be the string "unstable" to get unstable version."
       echo
       echo "Example:"
       echo "    nvm install v0.4.12         Install a specific version number"
@@ -128,9 +166,10 @@ nvm()
         curl -C - --progress-bar $tarball -o "node-$VERSION.tar.gz" && \
         tar -xzf "node-$VERSION.tar.gz" && \
         cd "node-$VERSION" && \
-        ./configure --prefix="$NVM_DIR/$VERSION" && \
+        ./configure --prefix="$NVM_DIR/$VERSION" --with-dtrace && \
         make && \
         rm -f "$NVM_DIR/$VERSION" 2>/dev/null && \
+        #pfexec make install
         make install
         )
       then
@@ -276,6 +315,13 @@ nvm()
     ;;
     "version" )
         nvm_version $2
+    ;;
+    "remote" )
+      if [ $# -ne 1 ]; then
+        nvm_remote $2
+        return
+      fi
+      nvm_remote all
     ;;
     * )
       nvm help
