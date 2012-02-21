@@ -251,6 +251,7 @@ nvm()
       export NVM_PATH="$NVM_DIR/$VERSION/lib/node"
       export NVM_BIN="$NVM_DIR/$VERSION/bin"
       echo "Now using node $VERSION"
+      echo "$NVM_DIR/$VERSION/bin/node" > $NVM_DIR/.nvm_use_version
     ;;
     "ls" | "list" )
       if [ $# -ne 1 ]; then
