@@ -107,12 +107,31 @@ nvm_version()
     fi
 }
 
+nvm_checksum()
+{
+    if [ "$1" = "$2" ]; then
+        return
+    else
+        echo 'Checksums do not match.'
+        return 1
+    fi
+}
+
 nvm()
 {
   if [ $# -lt 1 ]; then
     nvm help
     return
   fi
+
+
+  local os='sunos'
+  local arch='x86' 
+
+  local VERSION
+  local ADDITIONAL_PARAMETERS
+
+
   case $1 in
     "help" )
       echo
@@ -144,18 +163,79 @@ nvm()
       echo
     ;;
     "install" )
-      if [ $# -ne 2 ]; then
+      # initialize local variables
+      local binavail
+      local t
+      local url
+      local sum
+      local tarball
+      local shasum='shasum'
+
+      if [ ! `which curl` ]; then
+        echo 'NVM Needs curl to proceed.' >&2;
+      fi
+
+      if [ -z "`which shasum`" ]; then
+        shasum='sha1sum'
+      fi
+
+      if [ $# -lt 2 ]; then
         nvm help
         return
       fi
       [ "$NOCURL" ] && curl && return
       VERSION=`nvm_version $2`
+      ADDITIONAL_PARAMETERS='--with-dtrace'
+      shift
+      shift
+      while [ $# -ne 0 ]
+      do
+        ADDITIONAL_PARAMETERS="$ADDITIONAL_PARAMETERS $1"
+        shift
+      done
 
       [ -d "$NVM_DIR/$VERSION" ] && echo "$VERSION is already installed." && return
 
+      # shortcut - try the binary if possible.
+      if [ -n "$os" ]; then
+        binavail=0
+        # binaries started with node 0.8.6, 0.9.1
+        case "$VERSION" in
+          v0.9.[0]) binavail=0 ;;
+          v0.8.[012345]) binavail=0 ;;
+          v0.[1234567]) binavail=0 ;;
+          *) binavail=1 ;;
+        esac
+        if [ $binavail -eq 1 ]; then
+          t="$VERSION-$os-$arch"
+          url="http://nodejs.org/dist/$VERSION/node-${t}.tar.gz"
+          sum=`curl -s http://nodejs.org/dist/$VERSION/SHASUMS.txt.asc | grep node-${t}.tar.gz | awk '{print $1}'`
+          if (
+            mkdir -p "$NVM_DIR/bin/node-${t}" && \
+            cd "$NVM_DIR/bin" && \
+            curl -C - --progress-bar $url -o "node-${t}.tar.gz" && \
+            nvm_checksum `${shasum} node-${t}.tar.gz | awk '{print $1}'` $sum && \
+            tar -xzf "node-${t}.tar.gz" -C "node-${t}" --strip-components 1 && \
+            mv "node-${t}" "../$VERSION" && \
+            rm -f "node-${t}.tar.gz"
+            )
+          then
+            nvm use $VERSION
+            return;
+          else
+            echo "Binary download failed, trying source." >&2
+            cd "$NVM_DIR/bin" && rm -rf "node-${t}.tar.gz" "node-${t}"
+          fi
+        fi
+      fi
+
+      echo "Additional options while compiling: $ADDITIONAL_PARAMETERS"
+
       tarball=''
+      sum=''
       if [ "`curl -Is "http://nodejs.org/dist/$VERSION/node-$VERSION.tar.gz" | grep '200 OK'`" != '' ]; then
         tarball="http://nodejs.org/dist/$VERSION/node-$VERSION.tar.gz"
+        sum=`curl -s http://nodejs.org/dist/$VERSION/SHASUMS.txt | grep node-$VERSION.tar.gz | awk '{print $1}'`
       elif [ "`curl -Is "http://nodejs.org/dist/node-$VERSION.tar.gz" | grep '200 OK'`" != '' ]; then
         tarball="http://nodejs.org/dist/node-$VERSION.tar.gz"
       fi
@@ -163,21 +243,30 @@ nvm()
         [ ! -z $tarball ] && \
         mkdir -p "$NVM_DIR/src" && \
         cd "$NVM_DIR/src" && \
-        curl -C - --progress-bar $tarball -o "node-$VERSION.tar.gz" && \
+        curl --progress-bar $tarball -o "node-$VERSION.tar.gz" && \
+        if [ "$sum" = "" ]; then : ; else nvm_checksum `${shasum} node-$VERSION.tar.gz | awk '{print $1}'` $sum; fi && \
         tar -xzf "node-$VERSION.tar.gz" && \
         cd "node-$VERSION" && \
-        ./configure --prefix="$NVM_DIR/$VERSION" --with-dtrace && \
+        ./configure --prefix="$NVM_DIR/$VERSION" $ADDITIONAL_PARAMETERS && \
         make && \
         rm -f "$NVM_DIR/$VERSION" 2>/dev/null && \
-        #pfexec make install
         make install
         )
       then
         nvm use $VERSION
         if ! which npm ; then
           echo "Installing npm..."
-          # TODO: if node version 0.2.x add npm_install=0.2.19 before sh
-          curl http://npmjs.org/install.sh | clean=yes sh
+          if [[ "`expr match $VERSION '\(^v0\.1\.\)'`" != '' ]]; then
+            echo "npm requires node v0.2.3 or higher"
+          elif [[ "`expr match $VERSION '\(^v0\.2\.\)'`" != '' ]]; then
+            if [[ "`expr match $VERSION '\(^v0\.2\.[0-2]$\)'`" != '' ]]; then
+              echo "npm requires node v0.2.3 or higher"
+            else
+              curl https://npmjs.org/install.sh | clean=yes npm_install=0.2.19 sh
+            fi
+          else
+            curl https://npmjs.org/install.sh | clean=yes sh
+          fi
         fi
       else
         echo "nvm: install $VERSION failed!"
